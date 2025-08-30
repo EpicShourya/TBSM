@@ -18,7 +18,21 @@ interface PredictionResponse {
     factual_density: number;
     contradiction_score: number;
     ml_probability: number;
+    vagueness: number;
+    absoluteness: number;
+    credibility_markers: number;
+    speculation: number;
+    complexity: number;
   };
+  hallucination_ratio: number;
+  risk_level: string;
+  text_quality_score: number;
+  credibility_indicators: Record<string, boolean | number>;
+  linguistic_analysis: Record<string, number>;
+  content_analysis: Record<string, number>;
+  accuracy_percentage: number;
+  prediction_confidence: number;
+  reliability_score: number;
 }
 
 async function runPythonScript(text: string, context?: string): Promise<PredictionResponse> {

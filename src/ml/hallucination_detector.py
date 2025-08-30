@@ -47,13 +47,22 @@ except:
 
 @dataclass
 class DetectionResult:
-    """Result of hallucination detection analysis"""
+    """Enhanced result of hallucination detection analysis"""
     hallucination_probability: float
     confidence_score: float
     detected_issues: List[str]
     recommendations: List[str]
     is_safe: bool
     detailed_metrics: Dict[str, float]
+    hallucination_ratio: float
+    risk_level: str
+    text_quality_score: float
+    credibility_indicators: Dict[str, Any]
+    linguistic_analysis: Dict[str, float]
+    content_analysis: Dict[str, float]
+    accuracy_percentage: float
+    prediction_confidence: float
+    reliability_score: float
 
 class HallucinationDetector:
     """Streamlined hallucination detection system for production"""
@@ -75,6 +84,27 @@ class HallucinationDetector:
         self.factual_indicators = [
             "according to", "research shows", "studies indicate", "data suggests",
             "statistics show", "evidence indicates", "scientists found", "experts agree"
+        ]
+        
+        # Enhanced detection patterns
+        self.vague_terms = [
+            "some", "many", "often", "usually", "generally", "typically", "sometimes",
+            "might", "could", "would", "should", "probably", "likely"
+        ]
+        
+        self.absolute_terms = [
+            "always", "never", "all", "none", "every", "everything", "nothing",
+            "completely", "totally", "entirely", "perfectly", "impossible"
+        ]
+        
+        self.credibility_markers = [
+            "peer-reviewed", "published", "verified", "confirmed", "documented",
+            "official", "authenticated", "validated", "certified", "endorsed"
+        ]
+        
+        self.speculation_markers = [
+            "rumor", "allegedly", "supposedly", "claimed", "reported", "said to be",
+            "believed to be", "thought to be", "appears to be", "seems to be"
         ]
         
         # Try to load pre-trained model
@@ -199,8 +229,167 @@ class HallucinationDetector:
         
         return min(contradiction_count / len(sentences), 1.0)
     
+    def analyze_vagueness(self, text: str) -> float:
+        """Analyze the vagueness of language used"""
+        text_lower = text.lower()
+        words = word_tokenize(text_lower)
+        
+        if not words:
+            return 0.0
+        
+        vague_count = sum(1 for word in words if word in self.vague_terms)
+        return min(vague_count / len(words) * 5, 1.0)  # Scale up for visibility
+    
+    def analyze_absoluteness(self, text: str) -> float:
+        """Analyze use of absolute terms which can indicate overconfidence"""
+        text_lower = text.lower()
+        words = word_tokenize(text_lower)
+        
+        if not words:
+            return 0.0
+        
+        absolute_count = sum(1 for word in words if word in self.absolute_terms)
+        return min(absolute_count / len(words) * 10, 1.0)  # Scale up for visibility
+    
+    def analyze_credibility_markers(self, text: str) -> float:
+        """Analyze presence of credibility markers"""
+        text_lower = text.lower()
+        credibility_count = sum(1 for marker in self.credibility_markers if marker in text_lower)
+        sentences = sent_tokenize(text)
+        
+        if not sentences:
+            return 0.0
+        
+        return min(credibility_count / len(sentences), 1.0)
+    
+    def analyze_speculation(self, text: str) -> float:
+        """Analyze speculative language"""
+        text_lower = text.lower()
+        speculation_count = sum(1 for marker in self.speculation_markers if marker in text_lower)
+        sentences = sent_tokenize(text)
+        
+        if not sentences:
+            return 0.0
+        
+        return min(speculation_count / len(sentences), 1.0)
+    
+    def calculate_text_complexity(self, text: str) -> float:
+        """Calculate text complexity based on sentence and word length"""
+        sentences = sent_tokenize(text)
+        words = word_tokenize(text)
+        
+        if not sentences or not words:
+            return 0.0
+        
+        avg_sentence_length = len(words) / len(sentences)
+        avg_word_length = sum(len(word) for word in words) / len(words)
+        
+        # Normalize complexity score (higher = more complex)
+        complexity = min((avg_sentence_length / 20) + (avg_word_length / 10), 1.0)
+        return complexity
+    
+    def calculate_hallucination_ratio(self, text: str, metrics: Dict[str, float]) -> float:
+        """Calculate a comprehensive hallucination ratio"""
+        # Weight different factors
+        weights = {
+            'overconfidence': 0.25,
+            'vagueness': 0.15,
+            'speculation': 0.20,
+            'contradiction': 0.20,
+            'low_credibility': 0.15,
+            'ml_probability': 0.05
+        }
+        
+        overconfidence = metrics.get('confidence_issues', 0) + metrics.get('absoluteness', 0)
+        vagueness = metrics.get('vagueness', 0)
+        speculation = metrics.get('speculation', 0)
+        contradiction = metrics.get('contradiction_score', 0)
+        low_credibility = 1.0 - metrics.get('credibility_markers', 0)
+        ml_prob = metrics.get('ml_probability', 0.5)
+        
+        ratio = (
+            overconfidence * weights['overconfidence'] +
+            vagueness * weights['vagueness'] +
+            speculation * weights['speculation'] +
+            contradiction * weights['contradiction'] +
+            low_credibility * weights['low_credibility'] +
+            ml_prob * weights['ml_probability']
+        )
+        
+        return min(ratio, 1.0)
+    
+    def determine_risk_level(self, hallucination_probability: float) -> str:
+        """Determine risk level based on probability"""
+        if hallucination_probability < 0.2:
+            return "Very Low"
+        elif hallucination_probability < 0.4:
+            return "Low"
+        elif hallucination_probability < 0.6:
+            return "Medium"
+        elif hallucination_probability < 0.8:
+            return "High"
+        else:
+            return "Very High"
+    
+    def calculate_text_quality_score(self, metrics: Dict[str, float]) -> float:
+        """Calculate overall text quality score"""
+        quality_factors = {
+            'factual_density': metrics.get('factual_density', 0) * 0.3,
+            'credibility': metrics.get('credibility_markers', 0) * 0.3,
+            'clarity': (1.0 - metrics.get('vagueness', 0)) * 0.2,
+            'consistency': (1.0 - metrics.get('contradiction_score', 0)) * 0.2
+        }
+        
+        return sum(quality_factors.values())
+    
+    def calculate_accuracy_percentage(self, metrics: Dict[str, float]) -> float:
+        """Calculate accuracy percentage based on multiple reliability factors"""
+        # Factors that contribute to accuracy
+        factual_accuracy = metrics.get('factual_density', 0) * 0.35
+        source_reliability = metrics.get('credibility_markers', 0) * 0.25
+        logical_consistency = (1.0 - metrics.get('contradiction_score', 0)) * 0.20
+        language_precision = (1.0 - metrics.get('vagueness', 0)) * 0.10
+        balanced_confidence = (1.0 - metrics.get('confidence_issues', 0)) * 0.10
+        
+        accuracy = (factual_accuracy + source_reliability + logical_consistency + 
+                   language_precision + balanced_confidence)
+        
+        return min(accuracy * 100, 100.0)  # Convert to percentage and cap at 100%
+    
+    def calculate_prediction_confidence(self, metrics: Dict[str, float]) -> float:
+        """Calculate confidence in the prediction itself"""
+        # How confident we are in our analysis
+        ml_confidence = 1.0 - abs(0.5 - metrics.get('ml_probability', 0.5)) * 2  # Distance from 50/50
+        feature_consistency = 1.0 - np.std([
+            metrics.get('confidence_issues', 0),
+            metrics.get('contradiction_score', 0),
+            metrics.get('vagueness', 0),
+            metrics.get('speculation', 0)
+        ])
+        
+        text_length_factor = min(len(self.current_text.split()) / 50, 1.0) if hasattr(self, 'current_text') else 0.5
+        
+        confidence = (ml_confidence * 0.5 + feature_consistency * 0.3 + text_length_factor * 0.2)
+        return min(confidence * 100, 100.0)
+    
+    def calculate_reliability_score(self, metrics: Dict[str, float], accuracy: float) -> float:
+        """Calculate overall reliability score combining accuracy and other factors"""
+        # Base reliability on accuracy
+        base_reliability = accuracy / 100
+        
+        # Adjust for risk factors
+        risk_adjustment = 1.0 - (
+            metrics.get('speculation', 0) * 0.3 +
+            metrics.get('absoluteness', 0) * 0.2 +
+            metrics.get('contradiction_score', 0) * 0.3 +
+            (1.0 - metrics.get('credibility_markers', 0)) * 0.2
+        )
+        
+        reliability = (base_reliability * 0.7 + risk_adjustment * 0.3)
+        return min(reliability * 100, 100.0)
+    
     def analyze_response(self, text: str, context: Optional[str] = None) -> DetectionResult:
-        """Main analysis function"""
+        """Enhanced main analysis function with comprehensive metrics"""
         try:
             if not text or not text.strip():
                 return DetectionResult(
@@ -209,75 +398,167 @@ class HallucinationDetector:
                     detected_issues=["Empty or invalid text"],
                     recommendations=["Please provide valid text to analyze"],
                     is_safe=False,
-                    detailed_metrics={}
+                    detailed_metrics={},
+                    hallucination_ratio=0.5,
+                    risk_level="Medium",
+                    text_quality_score=0.0,
+                    credibility_indicators={},
+                    linguistic_analysis={},
+                    content_analysis={},
+                    accuracy_percentage=0.0,
+                    prediction_confidence=0.0,
+                    reliability_score=0.0
                 )
+            
+            # Store current text for analysis
+            self.current_text = text
             
             # Clean text
             cleaned_text = self.clean_text(text)
             
-            # Calculate various metrics
+            # Calculate all metrics
             confidence_issues = self.analyze_confidence_patterns(text)
             factual_density = self.calculate_factual_density(text)
             contradiction_score = self.detect_contradictions(text)
+            vagueness = self.analyze_vagueness(text)
+            absoluteness = self.analyze_absoluteness(text)
+            credibility_markers = self.analyze_credibility_markers(text)
+            speculation = self.analyze_speculation(text)
+            complexity = self.calculate_text_complexity(text)
             
             # ML model prediction if available
             ml_probability = 0.5
             if self.model and self.vectorizer:
                 try:
                     X = self.vectorizer.transform([cleaned_text])
-                    ml_probability = self.model.predict_proba(X)[0][1]  # Probability of hallucination
+                    ml_probability = self.model.predict_proba(X)[0][1]
                 except Exception as e:
                     print(f"WARNING: ML prediction error: {e}")
             
-            # Combine metrics for final score
-            metrics = {
+            # Comprehensive metrics
+            detailed_metrics = {
                 'confidence_issues': confidence_issues,
                 'factual_density': factual_density,
                 'contradiction_score': contradiction_score,
-                'ml_probability': ml_probability
+                'ml_probability': ml_probability,
+                'vagueness': vagueness,
+                'absoluteness': absoluteness,
+                'credibility_markers': credibility_markers,
+                'speculation': speculation,
+                'complexity': complexity
             }
             
-            # Weighted combination
+            # Calculate new accuracy metrics
+            accuracy_percentage = self.calculate_accuracy_percentage(detailed_metrics)
+            prediction_confidence = self.calculate_prediction_confidence(detailed_metrics)
+            
+            # Calculate hallucination ratio
+            hallucination_ratio = self.calculate_hallucination_ratio(text, detailed_metrics)
+            
+            # Enhanced weighted combination for main probability
             weights = {
-                'confidence_issues': 0.3,
-                'factual_density': 0.2,  # Lower factual density = higher hallucination risk
-                'contradiction_score': 0.2,
-                'ml_probability': 0.3
+                'confidence_issues': 0.20,
+                'factual_density': 0.15,
+                'contradiction_score': 0.15,
+                'ml_probability': 0.20,
+                'vagueness': 0.10,
+                'absoluteness': 0.10,
+                'speculation': 0.10
             }
             
             hallucination_probability = (
                 confidence_issues * weights['confidence_issues'] +
-                (1.0 - factual_density) * weights['factual_density'] +  # Invert factual density
+                (1.0 - factual_density) * weights['factual_density'] +
                 contradiction_score * weights['contradiction_score'] +
-                ml_probability * weights['ml_probability']
+                ml_probability * weights['ml_probability'] +
+                vagueness * weights['vagueness'] +
+                absoluteness * weights['absoluteness'] +
+                speculation * weights['speculation']
             )
             
             confidence_score = 1.0 - hallucination_probability
             is_safe = hallucination_probability < 0.6
+            risk_level = self.determine_risk_level(hallucination_probability)
+            text_quality_score = self.calculate_text_quality_score(detailed_metrics)
+            reliability_score = self.calculate_reliability_score(detailed_metrics, accuracy_percentage)
             
-            # Generate issues and recommendations
+            # Enhanced issue detection
             detected_issues = []
             recommendations = []
             
-            if confidence_issues > 0.5:
-                detected_issues.append("Contains overconfident or uncertain language")
-                recommendations.append("Use more balanced, evidence-based language")
+            if accuracy_percentage < 60:
+                detected_issues.append(f"Low accuracy score: {accuracy_percentage:.1f}%")
+                recommendations.append("Improve factual content and source credibility")
+            
+            if confidence_issues > 0.4:
+                detected_issues.append("High confidence inconsistency detected")
+                recommendations.append("Balance uncertain and confident statements")
             
             if factual_density < 0.3:
                 detected_issues.append("Low factual content density")
                 recommendations.append("Include more specific facts and references")
             
             if contradiction_score > 0.3:
-                detected_issues.append("Contains potential contradictions")
-                recommendations.append("Review for conflicting statements")
+                detected_issues.append("Contradictory statements found")
+                recommendations.append("Review for logical consistency")
+            
+            if vagueness > 0.4:
+                detected_issues.append("Excessive use of vague language")
+                recommendations.append("Be more specific and precise")
+            
+            if absoluteness > 0.3:
+                detected_issues.append("Overuse of absolute terms")
+                recommendations.append("Consider using more nuanced language")
+            
+            if speculation > 0.4:
+                detected_issues.append("High speculation markers detected")
+                recommendations.append("Verify claims with reliable sources")
+            
+            if credibility_markers < 0.1:
+                detected_issues.append("Lack of credibility indicators")
+                recommendations.append("Include references to authoritative sources")
             
             if ml_probability > 0.7:
                 detected_issues.append("ML model flagged as likely hallucination")
-                recommendations.append("Consider fact-checking this content")
+                recommendations.append("Consider comprehensive fact-checking")
+            
+            if prediction_confidence < 70:
+                detected_issues.append(f"Low prediction confidence: {prediction_confidence:.1f}%")
+                recommendations.append("Consider providing more context or longer text")
             
             if not detected_issues:
                 detected_issues.append("No significant issues detected")
-                recommendations.append("Content appears reliable")
+                recommendations.append("Content appears reliable and well-structured")
+            
+            # Credibility indicators analysis
+            credibility_indicators = {
+                'has_sources': credibility_markers > 0.1,
+                'factual_content': factual_density > 0.5,
+                'balanced_confidence': confidence_issues < 0.3,
+                'low_speculation': speculation < 0.3,
+                'consistent_logic': contradiction_score < 0.2,
+                'high_accuracy': accuracy_percentage > 70,
+                'reliable_prediction': prediction_confidence > 70
+            }
+            
+            # Linguistic analysis
+            linguistic_analysis = {
+                'vagueness_score': vagueness,
+                'absoluteness_score': absoluteness,
+                'speculation_score': speculation,
+                'complexity_score': complexity,
+                'confidence_pattern_score': confidence_issues
+            }
+            
+            # Content analysis
+            content_analysis = {
+                'factual_density': factual_density,
+                'credibility_markers': credibility_markers,
+                'contradiction_level': contradiction_score,
+                'overall_quality': text_quality_score,
+                'accuracy_level': accuracy_percentage / 100,
+                'reliability_level': reliability_score / 100
+            }
             
             return DetectionResult(
                 hallucination_probability=hallucination_probability,
@@ -285,7 +566,16 @@ class HallucinationDetector:
                 detected_issues=detected_issues,
                 recommendations=recommendations,
                 is_safe=is_safe,
-                detailed_metrics=metrics
+                detailed_metrics=detailed_metrics,
+                hallucination_ratio=hallucination_ratio,
+                risk_level=risk_level,
+                text_quality_score=text_quality_score,
+                credibility_indicators=credibility_indicators,
+                linguistic_analysis=linguistic_analysis,
+                content_analysis=content_analysis,
+                accuracy_percentage=accuracy_percentage,
+                prediction_confidence=prediction_confidence,
+                reliability_score=reliability_score
             )
             
         except Exception as e:
@@ -295,7 +585,16 @@ class HallucinationDetector:
                 detected_issues=[f"Analysis error: {str(e)}"],
                 recommendations=["Please try again with different text"],
                 is_safe=False,
-                detailed_metrics={}
+                detailed_metrics={},
+                hallucination_ratio=0.5,
+                risk_level="Medium",
+                text_quality_score=0.0,
+                credibility_indicators={},
+                linguistic_analysis={},
+                content_analysis={},
+                accuracy_percentage=0.0,
+                prediction_confidence=0.0,
+                reliability_score=0.0
             )
 
 def main():
@@ -315,7 +614,16 @@ def main():
         "detected_issues": result.detected_issues,
         "recommendations": result.recommendations,
         "is_safe": bool(result.is_safe),
-        "detailed_metrics": {k: float(v) for k, v in result.detailed_metrics.items()}
+        "detailed_metrics": {k: float(v) for k, v in result.detailed_metrics.items()},
+        "hallucination_ratio": float(result.hallucination_ratio),
+        "risk_level": result.risk_level,
+        "text_quality_score": float(result.text_quality_score),
+        "credibility_indicators": {k: bool(v) if isinstance(v, bool) else float(v) for k, v in result.credibility_indicators.items()},
+        "linguistic_analysis": {k: float(v) for k, v in result.linguistic_analysis.items()},
+        "content_analysis": {k: float(v) for k, v in result.content_analysis.items()},
+        "accuracy_percentage": float(result.accuracy_percentage),
+        "prediction_confidence": float(result.prediction_confidence),
+        "reliability_score": float(result.reliability_score)
     }
     
     print(json.dumps(output, indent=2))
